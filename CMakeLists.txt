@@ -81,6 +81,7 @@ if (VCL_BUILD_TESTS)
 	# Define the test files
 	set(VCL_TEST_SRC
 		tests/empty.cpp
+		tests/sequence.cpp
 		tests/white.cpp
 	)
 	source_group("" FILES ${VCL_TEST_SRC})

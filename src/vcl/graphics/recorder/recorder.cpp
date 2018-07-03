@@ -24,6 +24,7 @@
 
 // C++ standard library
 #include <exception>
+#include <iostream>
 
 extern "C"
 {
@@ -42,20 +43,7 @@ namespace Vcl { namespace Graphics { namespace Recorder
 		if (_fmtCtx == nullptr) {
 			throw std::domain_error("Cannot allocate AVFormatContext");
 		}
-
-		AVOutputFormat* fmt = nullptr;
-		if (out_fmt == OutputFormat::Avi)
-			fmt = av_guess_format("avi", nullptr, nullptr);
-		else if (out_fmt == OutputFormat::Mkv)
-			fmt = av_guess_format("matroska", nullptr, nullptr);
-		else if (out_fmt == OutputFormat::Mp4)
-			fmt = av_guess_format("mp4", nullptr, nullptr);
-		else
-			throw std::domain_error("Invalid output format definition");
-
-		if (fmt == nullptr)
-			throw std::runtime_error("Unable to allocate AVOutputFormat");
-		_fmtCtx->oformat = fmt;
+		createOutputFormat(out_fmt, _fmtCtx);
 
 		if (codec == Codec::H264)
 		{
@@ -165,6 +153,7 @@ namespace Vcl { namespace Graphics { namespace Recorder
 	{
 		if (_isOpen)
 		{
+			write(nullptr);
 			av_write_trailer(_fmtCtx);
 			avio_close(_fmtCtx->pb);
 			_fmtCtx->pb = nullptr;
@@ -177,6 +166,29 @@ namespace Vcl { namespace Graphics { namespace Recorder
 		}
 
 		_isOpen = false;
+	}
+
+	void Recorder::createOutputFormat(OutputFormat fmt, gsl::not_null<AVFormatContext*> ctx) const
+	{
+		AVOutputFormat* out_fmt = nullptr;
+		switch (fmt)
+		{
+		case OutputFormat::Avi:
+			out_fmt = av_guess_format("avi", nullptr, nullptr);
+			break;
+		case OutputFormat::Mkv:
+			out_fmt = av_guess_format("matroska", nullptr, nullptr);
+			break;
+		case OutputFormat::Mp4:
+			out_fmt = av_guess_format("mp4", nullptr, nullptr);
+			break;
+		default:
+			throw std::domain_error("Invalid output format definition");
+		}
+
+		if (out_fmt == nullptr)
+			throw std::runtime_error("Unable to allocate AVOutputFormat");
+		_fmtCtx->oformat = out_fmt;
 	}
 
 	void Recorder::configureH264()
@@ -230,38 +242,46 @@ namespace Vcl { namespace Graphics { namespace Recorder
 		_processing_frame->data[2] = const_cast<uint8_t*>(V.data());
 		_processing_frame->pts = _frames++;
 
+		return write(_processing_frame);
+	}
+
+	bool Recorder::write(AVFrame* frame)
+	{
 		// Create a packet for the codec
 		AVPacket pkt = { 0 };
 		av_init_packet(&pkt);
 		av_packet_rescale_ts(&pkt, _codecCtx->time_base, _recStream->time_base);
 
-		int av_err = avcodec_send_frame(_codecCtx, _processing_frame);
-		if (av_err < 0)
-			return false;
-		av_err = avcodec_send_frame(_codecCtx, nullptr);
+		// Send the frame to the codec for encoding
+		int av_err = avcodec_send_frame(_codecCtx, frame);
 		if (av_err < 0)
 			return false;
 
-		int got_output = 0;
-		av_err = avcodec_receive_packet(_codecCtx, &pkt);
-		if (av_err == AVERROR(EAGAIN) || av_err == AVERROR_EOF)
-			return false;
-		else if (!av_err)
-			got_output = 1;
-		
-		if (got_output != 0)
+		for(;;)
 		{
+			// Query the codec for packets to be further processed and
+			// written to the output.
+			av_err = avcodec_receive_packet(_codecCtx, &pkt);
+
+			// Check if there is actually something to write:
+			// EAGAIN: No image ready to be processed
+			// EOF: The image queue is empty
+			if (av_err == AVERROR(EAGAIN) || av_err == AVERROR_EOF)
+				return true;
+			else if (av_err < 0)
+				return false;
+
 			av_packet_rescale_ts(&pkt, _codecCtx->time_base, _recStream->time_base);
 			pkt.stream_index = _recStream->index;
 
+			// Write the packet to the output
 			av_err = av_interleaved_write_frame(_fmtCtx, &pkt);
 			if (av_err < 0)
 				return false;
 
 			av_packet_unref(&pkt);
-			return true;
 		}
 		
-		return false;
+		return true;
 	}
 }}}

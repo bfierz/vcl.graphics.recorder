@@ -71,8 +71,17 @@ namespace Vcl { namespace Graphics { namespace Recorder
 		bool write(gsl::span<const uint8_t> Y, gsl::span<const uint8_t> U, gsl::span<const uint8_t> V);
 
 	private:
+		//! Create the output format
+		//! \param fmt Format to create
+		//! \param ctx Context to assign the output format to
+		void createOutputFormat(OutputFormat fmt, gsl::not_null<AVFormatContext*> ctx) const;
+
 		//! Configure specific H264 parameters
 		void configureH264();
+
+		//! Write a single frame to the output
+		//! \param frame Frame to write out. Use 'nullptr' to flush the codec.
+		bool write(AVFrame* frame);
 
 		//! Hold the formating of the IO container
 		AVFormatContext* _fmtCtx{nullptr};
