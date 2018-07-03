@@ -22,22 +22,39 @@
  */
 #include <gtest/gtest.h>
 
+#include <vector>
+
 #include <vcl/graphics/recorder/recorder.h>
 
 using namespace Vcl::Graphics::Recorder;
 
-TEST(RecorderTest, EmptyOutputAviH264)
+TEST(RecorderTest, UniformWhiteOutputAviH264)
 {
+	std::vector<uint8_t> Y(256 * 256, 255);
+	std::vector<uint8_t> U(128 * 128, 128);
+	std::vector<uint8_t> V(128 * 128, 128);
+
 	Recorder rec{ OutputFormat::Avi, Codec::H264 };
-	rec.open("test.avi", 256, 256, 25);
+	rec.open("white.avi", 256, 256, 25);
+	rec.write(Y, U, V);
 }
-TEST(RecorderTest, EmptyOutputMkvH264)
+TEST(RecorderTest, UniformWhiteOutputMkvH264)
 {
+	std::vector<uint8_t> Y(256 * 256, 255);
+	std::vector<uint8_t> U(128 * 128, 128);
+	std::vector<uint8_t> V(128 * 128, 128);
+
 	Recorder rec{ OutputFormat::Mkv, Codec::H264 };
-	rec.open("test.mkv", 256, 256, 25);
+	rec.open("white.mkv", 256, 256, 25);
+	rec.write(Y, U, V);
 }
-TEST(RecorderTest, EmptyOutputMp4H264)
+TEST(RecorderTest, UniformWhiteOutputMp4H264)
 {
+	std::vector<uint8_t> Y(256 * 256, 255);
+	std::vector<uint8_t> U(128 * 128, 128);
+	std::vector<uint8_t> V(128 * 128, 128);
+
 	Recorder rec{ OutputFormat::Mp4, Codec::H264 };
-	rec.open("test.mp4", 256, 256, 25);
+	rec.open("white.mp4", 256, 256, 25);
+	rec.write(Y, U, V);
 }

@@ -28,6 +28,7 @@ set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 
 # Add dependencies
 add_subdirectory(externals/abseil EXCLUDE_FROM_ALL)
+add_subdirectory(externals/gsl EXCLUDE_FROM_ALL)
 
 add_library(vcl.graphics.recorder SHARED "")
 
@@ -67,6 +68,7 @@ target_link_libraries(vcl.graphics.recorder
 		${FFMPEG_LIBAVUTIL_LIBRARIES}
 	PUBLIC
 		absl::strings
+		GSL
 )
 
 # File System Unit Tests
@@ -79,6 +81,7 @@ if (VCL_BUILD_TESTS)
 	# Define the test files
 	set(VCL_TEST_SRC
 		tests/empty.cpp
+		tests/white.cpp
 	)
 	source_group("" FILES ${VCL_TEST_SRC})
 

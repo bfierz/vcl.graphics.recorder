@@ -25,6 +25,9 @@
 // Abseil
 #include <absl/strings/string_view.h>
 
+// GSL
+#include <gsl/gsl>
+
 #ifdef VCL_GRAPHICS_RECORDER_EXPORTS
 #	define VCL_GRAPHICS_RECORDER_API __declspec(dllexport)   
 #else  
@@ -33,9 +36,11 @@
 
 extern "C"
 {
+	struct AVCodec;
 	struct AVCodecContext;
 	struct AVCodecParameters;
 	struct AVFormatContext;
+	struct AVFrame;
 	struct AVStream;
 }
 
@@ -60,8 +65,10 @@ namespace Vcl { namespace Graphics { namespace Recorder
 		~Recorder();
 
 	public:
-		void open(absl::string_view sink_name, unsigned int width, unsigned int height);
+		void open(absl::string_view sink_name, unsigned int width, unsigned int height, unsigned int frame_rate);
 		void close();
+
+		bool write(gsl::span<const uint8_t> Y, gsl::span<const uint8_t> U, gsl::span<const uint8_t> V);
 
 	private:
 		//! Configure specific H264 parameters
@@ -73,10 +80,19 @@ namespace Vcl { namespace Graphics { namespace Recorder
 		//! Recording stream
 		AVStream* _recStream{nullptr};
 
+		//! Actual codec
+		AVCodec* _codec{nullptr};
+
 		//! Codec context
 		AVCodecContext* _codecCtx{nullptr};
 
 		//! Is the output open
 		bool _isOpen{false};
+
+		//! Temporary frames for data processing
+		AVFrame* _processing_frame{nullptr};
+
+		//! Current frame count
+		int64_t _frames{0};
 	};
 }}}
