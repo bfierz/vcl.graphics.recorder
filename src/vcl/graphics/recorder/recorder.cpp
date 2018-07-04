@@ -43,30 +43,17 @@ namespace Vcl { namespace Graphics { namespace Recorder
 		if (_fmtCtx == nullptr) {
 			throw std::domain_error("Cannot allocate AVFormatContext");
 		}
+		_fmtCtx->pb = nullptr;
+
+		// Create and configure the output container
 		createOutputFormat(out_fmt, _fmtCtx);
 
-		if (codec == Codec::H264)
-		{
-			_codec = avcodec_find_encoder(AV_CODEC_ID_H264);
-			//_codec = avcodec_find_encoder_by_name("libx264");
-			//_codec = avcodec_find_encoder_by_name("h264_nvenc");
-		}
-		else
-			throw std::domain_error("Invalid codec definition");
-
-		if (!_codec)
-			throw std::runtime_error("Encoder for requested codec not found");
-		_codecCtx = avcodec_alloc_context3(_codec);
-		if (_fmtCtx->oformat->flags & AVFMT_GLOBALHEADER)
-			_codecCtx->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
-
-		_codecCtx->sample_fmt = _codec->sample_fmts ? _codec->sample_fmts[0] : AV_SAMPLE_FMT_S16;
-		configureH264();
-
-		if (!(_recStream = avformat_new_stream(_fmtCtx, nullptr)))
+		// Create the video recording stream
+		if (!(_videoStream = avformat_new_stream(_fmtCtx, nullptr)))
 			throw std::runtime_error("Failed creating recording stream");
 
-		_fmtCtx->pb = nullptr;
+		std::tie(_codec, _codecCtx) = createCodec(codec);
+		configureH264();
 	}
 	Recorder::~Recorder()
 	{
@@ -95,11 +82,11 @@ namespace Vcl { namespace Graphics { namespace Recorder
 		memset(_fmtCtx->url, 0, sink_name_len);
 		sink_name.copy(_fmtCtx->url, sink_name.size());
 
-		_recStream->time_base = { 1, static_cast<int>(frame_rate) };
+		_videoStream->time_base = { 1, static_cast<int>(frame_rate) };
 
 		_codecCtx->width = width;
 		_codecCtx->height = height;
-		_codecCtx->time_base = _recStream->time_base;
+		_codecCtx->time_base = _videoStream->time_base;
 		_codecCtx->pix_fmt = AV_PIX_FMT_YUV420P;
 
 		// Open the codec and prepare for using it
@@ -108,7 +95,7 @@ namespace Vcl { namespace Graphics { namespace Recorder
 			throw std::runtime_error("Opening codec failed");
 
 		// Transfer context to stream
-		av_err = avcodec_parameters_from_context(_recStream->codecpar, _codecCtx);
+		av_err = avcodec_parameters_from_context(_videoStream->codecpar, _codecCtx);
 		if (av_err < 0)
 			throw std::runtime_error("Extracting codec parameters failed");
 
@@ -120,6 +107,13 @@ namespace Vcl { namespace Graphics { namespace Recorder
 			throw std::runtime_error("Opening audio failed");
 
 		AVDictionary* fmt_opts = nullptr;
+
+		// Reference for AvFormatContext options: https://ffmpeg.org/doxygen/2.8/movenc_8c_source.html
+		// Set format's privater options, to be passed to avformat_write_header()
+		av_dict_set(&fmt_opts, "movflags", "faststart", 0);
+
+		// default brand is "isom", which fails on some devices
+		av_dict_set(&fmt_opts, "brand", "mp42", 0);
 
 		av_err = avformat_write_header(_fmtCtx, &fmt_opts);
 		if (av_err < 0) {
@@ -191,6 +185,30 @@ namespace Vcl { namespace Graphics { namespace Recorder
 		_fmtCtx->oformat = out_fmt;
 	}
 
+	std::pair<AVCodec*, AVCodecContext*> Recorder::createCodec(Codec codec_cfg) const
+	{
+		AVCodec* codec = nullptr;
+		AVCodecContext* codec_ctx = nullptr;
+		if (codec_cfg == Codec::H264)
+		{
+			codec = avcodec_find_encoder(AV_CODEC_ID_H264);
+			//codec = avcodec_find_encoder_by_name("libx264");
+			//codec = avcodec_find_encoder_by_name("h264_nvenc");
+		}
+		else
+			throw std::domain_error("Invalid codec definition");
+
+		if (!codec)
+			throw std::runtime_error("Encoder for requested codec not found");
+		codec_ctx = avcodec_alloc_context3(codec);
+		if (_fmtCtx->oformat->flags & AVFMT_GLOBALHEADER)
+			codec_ctx->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
+
+		codec_ctx->sample_fmt = codec->sample_fmts ? codec->sample_fmts[0] : AV_SAMPLE_FMT_S16;
+
+		return {codec, codec_ctx};
+	}
+
 	void Recorder::configureH264()
 	{
 		int av_err = -1;
@@ -215,9 +233,9 @@ namespace Vcl { namespace Graphics { namespace Recorder
 
 		// Disable b-pyramid. CLI options for this is "-b-pyramid 0"
 		// Quicktime (ie. iOS) doesn't support this option
-		//av_err = av_opt_set(_codecCtx->priv_data, "b-pyramid", "0", 0);
-		//if (av_err < 0)
-		//	throw std::runtime_error("AV set option b-pyramid");
+		av_err = av_opt_set(_codecCtx->priv_data, "b-pyramid", "0", 0);
+		if (av_err < 0)
+			throw std::runtime_error("AV set option b-pyramid");
 
 		const uint8_t spspps[] =
 		{
@@ -250,7 +268,7 @@ namespace Vcl { namespace Graphics { namespace Recorder
 		// Create a packet for the codec
 		AVPacket pkt = { 0 };
 		av_init_packet(&pkt);
-		av_packet_rescale_ts(&pkt, _codecCtx->time_base, _recStream->time_base);
+		av_packet_rescale_ts(&pkt, _codecCtx->time_base, _videoStream->time_base);
 
 		// Send the frame to the codec for encoding
 		int av_err = avcodec_send_frame(_codecCtx, frame);
@@ -271,8 +289,8 @@ namespace Vcl { namespace Graphics { namespace Recorder
 			else if (av_err < 0)
 				return false;
 
-			av_packet_rescale_ts(&pkt, _codecCtx->time_base, _recStream->time_base);
-			pkt.stream_index = _recStream->index;
+			av_packet_rescale_ts(&pkt, _codecCtx->time_base, _videoStream->time_base);
+			pkt.stream_index = _videoStream->index;
 
 			// Write the packet to the output
 			av_err = av_interleaved_write_frame(_fmtCtx, &pkt);

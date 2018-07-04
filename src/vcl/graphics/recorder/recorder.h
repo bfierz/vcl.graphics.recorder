@@ -25,6 +25,9 @@
 // Abseil
 #include <absl/strings/string_view.h>
 
+// C++ standard library
+#include <utility>
+
 // GSL
 #include <gsl/gsl>
 
@@ -76,18 +79,25 @@ namespace Vcl { namespace Graphics { namespace Recorder
 		//! \param ctx Context to assign the output format to
 		void createOutputFormat(OutputFormat fmt, gsl::not_null<AVFormatContext*> ctx) const;
 
+		//! Prepare codec
+		//! \param codec Codec to create
+		std::pair<AVCodec*, AVCodecContext*> createCodec(Codec codec_cfg) const;
+
 		//! Configure specific H264 parameters
 		void configureH264();
 
 		//! Write a single frame to the output
 		//! \param frame Frame to write out. Use 'nullptr' to flush the codec.
+		//! \note Notes about internal API used:
+		//! * https://blogs.gentoo.org/lu_zero/2016/03/29/new-avcodec-api/
+		//! * https://www.ffmpeg.org/doxygen/3.4/group__lavc__encdec.html
 		bool write(AVFrame* frame);
 
 		//! Hold the formating of the IO container
 		AVFormatContext* _fmtCtx{nullptr};
 
 		//! Recording stream
-		AVStream* _recStream{nullptr};
+		AVStream* _videoStream{nullptr};
 
 		//! Actual codec
 		AVCodec* _codec{nullptr};
