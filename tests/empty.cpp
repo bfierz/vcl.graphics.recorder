@@ -28,16 +28,16 @@ using namespace Vcl::Graphics::Recorder;
 
 TEST(RecorderTest, EmptyOutputAviH264)
 {
-	Recorder rec{ OutputFormat::Avi, Codec::H264 };
+	Recorder rec{ OutputFormat::Avi, CodecType::H264 };
 	rec.open("test.avi", 256, 256, 25);
 }
 TEST(RecorderTest, EmptyOutputMkvH264)
 {
-	Recorder rec{ OutputFormat::Mkv, Codec::H264 };
+	Recorder rec{ OutputFormat::Mkv, CodecType::H264 };
 	rec.open("test.mkv", 256, 256, 25);
 }
 TEST(RecorderTest, EmptyOutputMp4H264)
 {
-	Recorder rec{ OutputFormat::Mp4, Codec::H264 };
+	Recorder rec{ OutputFormat::Mp4, CodecType::H264 };
 	rec.open("test.mp4", 256, 256, 25);
 }

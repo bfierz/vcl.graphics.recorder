@@ -37,7 +37,7 @@ extern "C"
 
 namespace Vcl { namespace Graphics { namespace Recorder
 {
-	Recorder::Recorder(OutputFormat out_fmt, Codec codec)
+	Recorder::Recorder(OutputFormat out_fmt, CodecType codec)
 	{
 		_fmtCtx = avformat_alloc_context();
 		if (_fmtCtx == nullptr) {
@@ -185,15 +185,16 @@ namespace Vcl { namespace Graphics { namespace Recorder
 		_fmtCtx->oformat = out_fmt;
 	}
 
-	std::pair<AVCodec*, AVCodecContext*> Recorder::createCodec(Codec codec_cfg) const
+	std::pair<AVCodec*, AVCodecContext*> Recorder::createCodec(CodecType codec_cfg) const
 	{
 		AVCodec* codec = nullptr;
 		AVCodecContext* codec_ctx = nullptr;
-		if (codec_cfg == Codec::H264)
+		if (codec_cfg == CodecType::H264)
 		{
-			codec = avcodec_find_encoder(AV_CODEC_ID_H264);
-			//codec = avcodec_find_encoder_by_name("libx264");
+			//codec = avcodec_find_encoder(AV_CODEC_ID_H264);
+			codec = avcodec_find_encoder_by_name("libx264");
 			//codec = avcodec_find_encoder_by_name("h264_nvenc");
+			//codec = avcodec_find_encoder_by_name("libopenh264");
 		}
 		else
 			throw std::domain_error("Invalid codec definition");

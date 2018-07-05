@@ -34,7 +34,7 @@ TEST(RecorderTest, SequenceOutputAviH264)
 	std::vector<uint8_t> U(128 * 128, 0);
 	std::vector<uint8_t> V(128 * 128, 0);
 
-	Recorder rec{ OutputFormat::Avi, Codec::H264 };
+	Recorder rec{ OutputFormat::Avi, CodecType::H264 };
 	rec.open("sequence.avi", 256, 256, 1);
 
 	for (int i = 0; i <= 10; i++)
@@ -49,7 +49,7 @@ TEST(RecorderTest, SequenceOutputMkvH264)
 	std::vector<uint8_t> U(128 * 128, 0);
 	std::vector<uint8_t> V(128 * 128, 0);
 
-	Recorder rec{ OutputFormat::Mkv, Codec::H264 };
+	Recorder rec{ OutputFormat::Mkv, CodecType::H264 };
 	rec.open("sequence.mkv", 256, 256, 1);
 
 	for (int i = 0; i <= 10; i++)
@@ -64,7 +64,7 @@ TEST(RecorderTest, SequenceOutputMp4H264)
 	std::vector<uint8_t> U(128 * 128, 0);
 	std::vector<uint8_t> V(128 * 128, 0);
 
-	Recorder rec{ OutputFormat::Mp4, Codec::H264 };
+	Recorder rec{ OutputFormat::Mp4, CodecType::H264 };
 	rec.open("sequence.mp4", 256, 256, 1);
 
 	for (int i = 0; i <= 10; i++)

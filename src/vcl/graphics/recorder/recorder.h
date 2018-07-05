@@ -56,7 +56,7 @@ namespace Vcl { namespace Graphics { namespace Recorder
 		Mp4
 	};
 
-	enum class Codec
+	enum class CodecType
 	{
 		H264
 	};
@@ -64,7 +64,7 @@ namespace Vcl { namespace Graphics { namespace Recorder
 	class VCL_GRAPHICS_RECORDER_API Recorder
 	{
 	public:
-		Recorder(OutputFormat out_fmt, Codec codec);
+		Recorder(OutputFormat out_fmt, CodecType codec);
 		~Recorder();
 
 	public:
@@ -81,7 +81,7 @@ namespace Vcl { namespace Graphics { namespace Recorder
 
 		//! Prepare codec
 		//! \param codec Codec to create
-		std::pair<AVCodec*, AVCodecContext*> createCodec(Codec codec_cfg) const;
+		std::pair<AVCodec*, AVCodecContext*> createCodec(CodecType codec_cfg) const;
 
 		//! Configure specific H264 parameters
 		void configureH264();
