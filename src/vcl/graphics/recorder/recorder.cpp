@@ -191,10 +191,11 @@ namespace Vcl { namespace Graphics { namespace Recorder
 		AVCodecContext* codec_ctx = nullptr;
 		if (codec_cfg == CodecType::H264)
 		{
-			//codec = avcodec_find_encoder(AV_CODEC_ID_H264);
-			codec = avcodec_find_encoder_by_name("libx264");
-			//codec = avcodec_find_encoder_by_name("h264_nvenc");
-			//codec = avcodec_find_encoder_by_name("libopenh264");
+			codec = avcodec_find_encoder_by_name("h264_nvenc");
+			//if (codec == nullptr)
+			//	codec = avcodec_find_encoder_by_name("libopenh264");
+			if (codec == nullptr)
+				codec = avcodec_find_encoder_by_name("libx264");
 		}
 		else
 			throw std::domain_error("Invalid codec definition");

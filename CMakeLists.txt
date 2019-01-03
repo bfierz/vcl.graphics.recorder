@@ -23,7 +23,7 @@
 cmake_minimum_required(VERSION 3.0)
 
 # General project configurations
-project(vcl.graphics.recorder)
+project(vcl.graphics.recorder CXX)
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 
 # Add dependencies
@@ -35,9 +35,9 @@ add_library(vcl.graphics.recorder SHARED "")
 # Define the sources
 set(VCL_RECORDER_PRIV_SRC
 	${CMAKE_CURRENT_SOURCE_DIR}/src/vcl/graphics/recorder/recorder.cpp
-	${CMAKE_CURRENT_SOURCE_DIR}/src/vcl/graphics/recorder/recorder.h
 )
 set(VCL_RECORDER_PUB_SRC
+	${CMAKE_CURRENT_SOURCE_DIR}/src/vcl/graphics/recorder/recorder.h
 )
 target_sources(vcl.graphics.recorder
 	PRIVATE
@@ -55,17 +55,19 @@ target_compile_definitions(vcl.graphics.recorder
 # The include files are stored along-side the source code
 target_include_directories(vcl.graphics.recorder PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
 
-set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/cmake/")
-find_package(FFmpeg)
-target_include_directories(vcl.graphics.recorder
-	PRIVATE
-		${FFMPEG_LIBAVCODEC_INCLUDE_DIRS}
-)
+# Download automatically, you can also just copy the conan.cmake file
+if(NOT EXISTS "${CMAKE_BINARY_DIR}/conan.cmake")
+	message(STATUS "Downloading conan.cmake from https://github.com/conan-io/cmake-conan")
+	file(DOWNLOAD "https://raw.githubusercontent.com/conan-io/cmake-conan/master/conan.cmake" "${CMAKE_BINARY_DIR}/conan.cmake")
+endif()
+include(${CMAKE_BINARY_DIR}/conan.cmake)
+conan_cmake_run(REQUIRES ffmpeg/4.0.2@bincrafters/stable
+                BASIC_SETUP CMAKE_TARGETS
+                BUILD missing)
+
 target_link_libraries(vcl.graphics.recorder
 	PRIVATE
-		${FFMPEG_LIBAVCODEC_LIBRARIES}
-		${FFMPEG_LIBAVFORMAT_LIBRARIES}
-		${FFMPEG_LIBAVUTIL_LIBRARIES}
+		CONAN_PKG::ffmpeg
 	PUBLIC
 		absl::strings
 		GSL
@@ -74,9 +76,9 @@ target_link_libraries(vcl.graphics.recorder
 # File System Unit Tests
 option(VCL_BUILD_TESTS "Build the unit tests" OFF)
 if (VCL_BUILD_TESTS)
-	add_subdirectory(externals/googletest EXCLUDE_FROM_ALL)
 	set(BUILD_GTEST ON CACHE BOOL "" FORCE)
 	set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
+	add_subdirectory(externals/googletest EXCLUDE_FROM_ALL)
 
 	# Define the test files
 	set(VCL_TEST_SRC
