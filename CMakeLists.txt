@@ -35,9 +35,9 @@ add_library(vcl.graphics.recorder SHARED "")
 # Define the sources
 set(VCL_RECORDER_PRIV_SRC
 	${CMAKE_CURRENT_SOURCE_DIR}/src/vcl/graphics/recorder/recorder.cpp
+	${CMAKE_CURRENT_SOURCE_DIR}/src/vcl/graphics/recorder/recorder.h
 )
 set(VCL_RECORDER_PUB_SRC
-	${CMAKE_CURRENT_SOURCE_DIR}/src/vcl/graphics/recorder/recorder.h
 )
 target_sources(vcl.graphics.recorder
 	PRIVATE
@@ -61,9 +61,17 @@ if(NOT EXISTS "${CMAKE_BINARY_DIR}/conan.cmake")
 	file(DOWNLOAD "https://raw.githubusercontent.com/conan-io/cmake-conan/master/conan.cmake" "${CMAKE_BINARY_DIR}/conan.cmake")
 endif()
 include(${CMAKE_BINARY_DIR}/conan.cmake)
-conan_cmake_run(REQUIRES ffmpeg/4.0.2@bincrafters/stable
-                BASIC_SETUP CMAKE_TARGETS
-                BUILD missing)
+conan_cmake_run(
+	REQUIRES
+		ffmpeg/4.0.2@bincrafters/stable
+		glew/2.1.0@bincrafters/stable
+		glfw/3.2.1@bincrafters/stable
+		imgui/1.63@bincrafters/stable
+	BASIC_SETUP
+	CMAKE_TARGETS
+	BUILD
+		missing
+)
 
 target_link_libraries(vcl.graphics.recorder
 	PRIVATE
@@ -73,7 +81,6 @@ target_link_libraries(vcl.graphics.recorder
 		GSL
 )
 
-# File System Unit Tests
 option(VCL_BUILD_TESTS "Build the unit tests" OFF)
 if (VCL_BUILD_TESTS)
 	set(BUILD_GTEST ON CACHE BOOL "" FORCE)
@@ -99,3 +106,33 @@ if (VCL_BUILD_TESTS)
 	)
 	
 endif (VCL_BUILD_TESTS)
+
+option(VCL_BUILD_EXAMPLES "Build the examples" OFF)
+if (VCL_BUILD_EXAMPLES)
+
+	set(EXAMPLES_SRC
+		examples/screenrecorder/main.cpp
+	)
+	source_group("" FILES ${EXAMPLES_SRC})
+	set(EXAMPLES_IMGUI_SRC
+		examples/screenrecorder/imgui/imgui_impl_glfw.cpp
+		examples/screenrecorder/imgui/imgui_impl_glfw.h
+		examples/screenrecorder/imgui/imgui_impl_opengl3.cpp
+		examples/screenrecorder/imgui/imgui_impl_opengl3.h
+	)
+	source_group("imgui" FILES ${EXAMPLES_IMGUI_SRC})
+
+	add_executable(screenrecorder
+		${EXAMPLES_SRC}
+		${EXAMPLES_IMGUI_SRC}
+	)
+
+	target_link_libraries(screenrecorder
+		PRIVATE
+			vcl.graphics.recorder
+			CONAN_PKG::glew
+			CONAN_PKG::glfw
+			CONAN_PKG::imgui
+	)
+	
+endif (VCL_BUILD_EXAMPLES)

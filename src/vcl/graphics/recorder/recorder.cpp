@@ -33,6 +33,7 @@ extern "C"
 #include <libavutil/error.h>
 #include <libavutil/imgutils.h>
 #include <libavutil/opt.h>
+#include <libswscale/swscale.h>
 }
 
 namespace Vcl { namespace Graphics { namespace Recorder
@@ -256,6 +257,7 @@ namespace Vcl { namespace Graphics { namespace Recorder
 	bool Recorder::write(gsl::span<const uint8_t> Y, gsl::span<const uint8_t> U, gsl::span<const uint8_t> V)
 	{
 		// Fill the processing frame
+		_processing_frame->format = AV_PIX_FMT_YUV420P;
 		av_image_fill_arrays(_processing_frame->data, _processing_frame->linesize, nullptr, (AVPixelFormat)_processing_frame->format, _processing_frame->width, _processing_frame->height, 1);
 		_processing_frame->data[0] = const_cast<uint8_t*>(Y.data());
 		_processing_frame->data[1] = const_cast<uint8_t*>(U.data());
@@ -263,6 +265,32 @@ namespace Vcl { namespace Graphics { namespace Recorder
 		_processing_frame->pts = _frames++;
 
 		return write(_processing_frame);
+	}
+	
+	bool Recorder::write(gsl::span<const std::array<uint8_t, 3>> rgb, unsigned int w, unsigned int h)
+	{
+		// Convert from RGB to YUV
+		const auto cw = _codecCtx->width;
+		const auto ch = _codecCtx->height;
+		auto sws_ctx = sws_getContext(
+            w,
+            h,
+            AV_PIX_FMT_BGR24,
+            cw,
+            ch,
+            AV_PIX_FMT_YUV420P,
+            SWS_BICUBIC, NULL, NULL, NULL
+		);
+		const uint8_t* rgb24[3] = { rgb.data()->data(), 0, 0 };
+		int rgb24_stride[3] = { 3 * w, 0, 0 };
+
+		using ByteArray = std::unique_ptr<uint8_t, void(*)(void*)>;
+		auto yuv = ByteArray(reinterpret_cast<uint8_t*>(malloc(rgb.size_bytes())), free);
+		uint8_t* yuv420p[3] = { yuv.get(), yuv.get() + cw*ch, yuv.get() + cw*ch + cw*ch/4 };
+		int yuv420p_stride[3] = { cw, cw/2, cw/2 };
+		sws_scale(sws_ctx, rgb24, rgb24_stride, 0, h, yuv420p, yuv420p_stride);
+
+		return write(gsl::make_span(yuv420p[0], cw*ch), gsl::make_span(yuv420p[1], cw*ch), gsl::make_span(yuv420p[2], cw*ch));
 	}
 
 	bool Recorder::write(AVFrame* frame)
