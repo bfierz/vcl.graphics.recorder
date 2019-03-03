@@ -26,6 +26,7 @@
 #include <absl/strings/string_view.h>
 
 // C++ standard library
+#include <array>
 #include <utility>
 
 // GSL
@@ -72,6 +73,7 @@ namespace Vcl { namespace Graphics { namespace Recorder
 		void close();
 
 		bool write(gsl::span<const uint8_t> Y, gsl::span<const uint8_t> U, gsl::span<const uint8_t> V);
+		bool write(gsl::span<const uint8_t> Y, gsl::span<const std::array<uint8_t, 2>> UV);
 		bool write(gsl::span<const std::array<uint8_t, 3>> rgb, unsigned int w, unsigned int h);
 
 	private:

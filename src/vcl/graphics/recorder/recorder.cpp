@@ -88,7 +88,6 @@ namespace Vcl { namespace Graphics { namespace Recorder
 		_codecCtx->width = width;
 		_codecCtx->height = height;
 		_codecCtx->time_base = _videoStream->time_base;
-		_codecCtx->pix_fmt = AV_PIX_FMT_YUV420P;
 
 		// Open the codec and prepare for using it
 		av_err = avcodec_open2(_codecCtx, _codec, nullptr);
@@ -192,9 +191,20 @@ namespace Vcl { namespace Graphics { namespace Recorder
 		AVCodecContext* codec_ctx = nullptr;
 		if (codec_cfg == CodecType::H264)
 		{
+			// List of available hardware encoders in FFmpeg 4
+			// https://stackoverflow.com/a/50703794
+			// * h264_amf to access AMD gpu
+			// * h264_nvenc use nvidia gpu cards
+			// * h264_omx raspberry pi encoder
+			// * h264_qsv use Intel Quick Sync Video (hardware embedded in modern Intel CPU)
+			// * h264_v4l2m2m use V4L2 Linux kernel api to access hardware codecs
+			// * h264_vaapi use VAAPI which is another abstraction API to access video acceleration hardware
+			// * h264_videotoolbox use videotoolbox an API to access hardware on OS X
 			codec = avcodec_find_encoder_by_name("h264_nvenc");
-			//if (codec == nullptr)
-			//	codec = avcodec_find_encoder_by_name("libopenh264");
+			if (codec == nullptr)
+				codec = avcodec_find_encoder_by_name("h264_qsv");
+			if (codec == nullptr)
+				codec = avcodec_find_encoder_by_name("libopenh264");
 			if (codec == nullptr)
 				codec = avcodec_find_encoder_by_name("libx264");
 		}
@@ -222,23 +232,41 @@ namespace Vcl { namespace Graphics { namespace Recorder
 		_codecCtx->max_b_frames = 1;
 
 		// libx264 specific setting
-		av_err = av_opt_set(_codecCtx->priv_data, "crf", "12", 0);
-		if (av_err < 0)
-			throw std::runtime_error("AV set option crf");
+		if (strcmp(_codecCtx->codec->name, "libx264") == 0)
+		{
+			_codecCtx->pix_fmt = AV_PIX_FMT_YUV420P;
+			av_err = av_opt_set(_codecCtx->priv_data, "crf", "12", 0);
+			if (av_err < 0)
+				throw std::runtime_error("AV set option crf");
 
-		av_err = av_opt_set(_codecCtx->priv_data, "profile", "main", 0);
-		if (av_err < 0)
-			throw std::runtime_error("AV set option profile");
+			av_err = av_opt_set(_codecCtx->priv_data, "profile", "main", 0);
+			if (av_err < 0)
+				throw std::runtime_error("AV set option profile");
 
-		av_err = av_opt_set(_codecCtx->priv_data, "preset", "slow", 0);
-		if (av_err < 0)
-			throw std::runtime_error("AV set option preset");
+			av_err = av_opt_set(_codecCtx->priv_data, "preset", "slow", 0);
+			if (av_err < 0)
+				throw std::runtime_error("AV set option preset");
 
-		// Disable b-pyramid. CLI options for this is "-b-pyramid 0"
-		// Quicktime (ie. iOS) doesn't support this option
-		av_err = av_opt_set(_codecCtx->priv_data, "b-pyramid", "0", 0);
-		if (av_err < 0)
-			throw std::runtime_error("AV set option b-pyramid");
+			// Disable b-pyramid. CLI options for this is "-b-pyramid 0"
+			// Quicktime (ie. iOS) doesn't support this option
+			av_err = av_opt_set(_codecCtx->priv_data, "b-pyramid", "0", 0);
+			if (av_err < 0)
+				throw std::runtime_error("AV set option b-pyramid");
+		}
+		else if (strcmp(_codecCtx->codec->name, "libopenh264") == 0)
+		{
+			_codecCtx->pix_fmt = AV_PIX_FMT_YUV420P;
+			av_err = av_opt_set(_codecCtx->priv_data, "profile", "baseline", AV_OPT_SEARCH_CHILDREN);
+			if (av_err < 0)
+				throw std::runtime_error("AV set option profile");
+		}
+		else if (strcmp(_codecCtx->codec->name, "h264_qsv") == 0)
+		{
+			_codecCtx->pix_fmt = AV_PIX_FMT_NV12;
+			av_err = av_opt_set(_codecCtx->priv_data, "profile", "baseline", AV_OPT_SEARCH_CHILDREN);
+			if (av_err < 0)
+				throw std::runtime_error("AV set option profile");
+		}
 
 		const uint8_t spspps[] =
 		{
@@ -256,7 +284,6 @@ namespace Vcl { namespace Graphics { namespace Recorder
 
 	bool Recorder::write(gsl::span<const uint8_t> Y, gsl::span<const uint8_t> U, gsl::span<const uint8_t> V)
 	{
-		// Fill the processing frame
 		_processing_frame->format = AV_PIX_FMT_YUV420P;
 		av_image_fill_arrays(_processing_frame->data, _processing_frame->linesize, nullptr, (AVPixelFormat)_processing_frame->format, _processing_frame->width, _processing_frame->height, 1);
 		_processing_frame->data[0] = const_cast<uint8_t*>(Y.data());
@@ -267,30 +294,56 @@ namespace Vcl { namespace Graphics { namespace Recorder
 		return write(_processing_frame);
 	}
 	
+	bool Recorder::write(gsl::span<const uint8_t> Y, gsl::span<const std::array<uint8_t, 2>> UV)
+	{
+		_processing_frame->format = AV_PIX_FMT_NV12;
+		av_image_fill_arrays(_processing_frame->data, _processing_frame->linesize, nullptr, (AVPixelFormat)_processing_frame->format, _processing_frame->width, _processing_frame->height, 1);
+		_processing_frame->data[0] = const_cast<uint8_t*>(Y.data());
+		_processing_frame->data[1] = const_cast<uint8_t*>(UV.data()->data());
+		_processing_frame->pts = _frames++;
+
+		return write(_processing_frame);
+	}
+
 	bool Recorder::write(gsl::span<const std::array<uint8_t, 3>> rgb, unsigned int w, unsigned int h)
 	{
+		using SwsContext = std::unique_ptr<SwsContext, void(*)(SwsContext*)>;
+		using ByteArray = std::unique_ptr<uint8_t, void(*)(void*)>;
+
 		// Convert from RGB to YUV
 		const auto cw = _codecCtx->width;
 		const auto ch = _codecCtx->height;
-		auto sws_ctx = sws_getContext(
-            w,
-            h,
-            AV_PIX_FMT_BGR24,
-            cw,
-            ch,
-            AV_PIX_FMT_YUV420P,
-            SWS_BICUBIC, NULL, NULL, NULL
-		);
+		auto sws_ctx = SwsContext(sws_getContext(
+			w,
+			h,
+			AV_PIX_FMT_BGR24,
+			cw,
+			ch,
+			_codecCtx->pix_fmt,
+			SWS_BICUBIC, NULL, NULL, NULL
+		), sws_freeContext);
 		const uint8_t* rgb24[3] = { rgb.data()->data(), 0, 0 };
-		int rgb24_stride[3] = { 3 * w, 0, 0 };
+		int rgb24_stride[4] = { 3 * w, 0, 0, 0 };
 
-		using ByteArray = std::unique_ptr<uint8_t, void(*)(void*)>;
-		auto yuv = ByteArray(reinterpret_cast<uint8_t*>(malloc(rgb.size_bytes())), free);
-		uint8_t* yuv420p[3] = { yuv.get(), yuv.get() + cw*ch, yuv.get() + cw*ch + cw*ch/4 };
-		int yuv420p_stride[3] = { cw, cw/2, cw/2 };
-		sws_scale(sws_ctx, rgb24, rgb24_stride, 0, h, yuv420p, yuv420p_stride);
+		if (_codecCtx->pix_fmt == AV_PIX_FMT_YUV420P)
+		{
+			auto buffer = ByteArray(reinterpret_cast<uint8_t*>(malloc(rgb.size_bytes())), free);
+			uint8_t* yuv420p[3] = { buffer.get(), buffer.get() + cw*ch, buffer.get() + cw*ch + cw*ch/4 };
+			int yuv420p_stride[4] = { cw, cw/2, cw/2, 0 };
+			sws_scale(sws_ctx.get(), rgb24, rgb24_stride, 0, h, yuv420p, yuv420p_stride);
 
-		return write(gsl::make_span(yuv420p[0], cw*ch), gsl::make_span(yuv420p[1], cw*ch), gsl::make_span(yuv420p[2], cw*ch));
+			return write(gsl::make_span(yuv420p[0], cw*ch), gsl::make_span(yuv420p[1], cw*ch), gsl::make_span(yuv420p[2], cw*ch));
+		}
+		else if (_codecCtx->pix_fmt == AV_PIX_FMT_NV12)
+		{
+			auto buffer = ByteArray(reinterpret_cast<uint8_t*>(malloc(rgb.size_bytes())), free);
+			uint8_t* nv12[3] = { buffer.get(), buffer.get() + cw*ch, nullptr };
+			int nv12_stride[4] = { cw, cw, 0, 0 };
+			sws_scale(sws_ctx.get(), rgb24, rgb24_stride, 0, h, nv12, nv12_stride);
+
+			return write(gsl::make_span(nv12[0], cw*ch), gsl::make_span(reinterpret_cast<std::array<uint8_t, 2>*>(nv12[1]), cw*ch/4));
+		}
+		return false;
 	}
 
 	bool Recorder::write(AVFrame* frame)
