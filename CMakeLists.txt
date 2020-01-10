@@ -58,7 +58,7 @@ target_include_directories(vcl.graphics.recorder PUBLIC ${CMAKE_CURRENT_SOURCE_D
 # Download automatically, you can also just copy the conan.cmake file
 if(NOT EXISTS "${CMAKE_BINARY_DIR}/conan.cmake")
 	message(STATUS "Downloading conan.cmake from https://github.com/conan-io/cmake-conan")
-	file(DOWNLOAD "https://raw.githubusercontent.com/conan-io/cmake-conan/master/conan.cmake" "${CMAKE_BINARY_DIR}/conan.cmake")
+	file(DOWNLOAD "https://github.com/conan-io/cmake-conan/raw/v0.14/conan.cmake" "${CMAKE_BINARY_DIR}/conan.cmake")
 endif()
 include(${CMAKE_BINARY_DIR}/conan.cmake)
 conan_cmake_run(
@@ -69,9 +69,31 @@ conan_cmake_run(
 		imgui/1.63@bincrafters/stable
 	BASIC_SETUP
 	CMAKE_TARGETS
-	BUILD
-		missing
+	#BUILD
+	#	missing
 )
+
+function(remap_target TGT)
+	# Remap build types for external targets to avoid non-existing builds
+	set_target_properties(${TGT}
+		PROPERTIES
+			MAP_IMPORTED_CONFIG_MINSIZEREL Release
+			MAP_IMPORTED_CONFIG_RELWITHDEBINFO Release
+	)
+	message(STATUS "Remapped configurations for ${TGT}")
+
+	get_target_property(CONAN_IMPORT_TARGETS ${TGT} INTERFACE_LINK_LIBRARIES)
+	list(FILTER CONAN_IMPORT_TARGETS INCLUDE REGEX CONAN_PKG::.+)
+
+	foreach(IMPORTED_TARGET ${CONAN_IMPORT_TARGETS})
+		remap_target(${IMPORTED_TARGET})
+	endforeach()
+endfunction()
+
+set(EXTERNAL_TARGETS CONAN_PKG::ffmpeg CONAN_PKG::glew CONAN_PKG::glfw CONAN_PKG::imgui)
+foreach(tgt ${EXTERNAL_TARGETS})
+	remap_target(${tgt})
+endforeach()
 
 target_link_libraries(vcl.graphics.recorder
 	PRIVATE
